@@ -24,12 +24,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = _db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JSON_AS_ASCII'] = False
 
-# Cloud image storage via Supabase Storage (S3-compatible) when configured
-S3_ENDPOINT = os.environ.get('S3_ENDPOINT', '').strip()
-S3_KEY = os.environ.get('S3_ACCESS_KEY', '').strip()
-S3_SECRET = os.environ.get('S3_SECRET_KEY', '').strip()
-S3_BUCKET = os.environ.get('S3_BUCKET', '').strip()
-USE_S3 = bool(S3_ENDPOINT and S3_KEY and S3_SECRET and S3_BUCKET)
+# Cloud image storage via Supabase Storage REST API when configured
+SUPABASE_REF = os.environ.get('SUPABASE_REF', '').strip()
+SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '').strip()
+USE_SUPABASE_STORAGE = bool(SUPABASE_REF and SUPABASE_SERVICE_KEY)
+STORAGE_BUCKET = 'images'
 
 def _migrate_db():
     """Add new columns to existing tables (simple SQLite ALTER TABLE migration)."""
@@ -1192,10 +1191,10 @@ def upload_image():
 
     tfname = fname.rsplit('.', 1)[0] + '_thumb.jpg'
     thumb_url = None
-    if USE_S3:
-        _s3_put(fname, out_data)
+    if USE_SUPABASE_STORAGE:
+        _supabase_put(fname, out_data)
         if tbuf is not None:
-            _s3_put(tfname, tbuf.getvalue())
+            _supabase_put(tfname, tbuf.getvalue())
             thumb_url = f'/uploads/{tfname}'
     else:
         upload_dir = os.path.join(basedir, '..', 'uploads')
@@ -1210,27 +1209,28 @@ def upload_image():
     return jsonify({'url': f'/uploads/{fname}', 'thumb': thumb_url}), 201
 
 
-def _s3_client():
-    import boto3
-    from botocore.config import Config
-    return boto3.client(
-        's3',
-        endpoint_url=S3_ENDPOINT,
-        aws_access_key_id=S3_KEY,
-        aws_secret_access_key=S3_SECRET,
-        region_name='auto',
-        config=Config(signature_version='s3v4'),
-    )
+def _supabase_put(key, data):
+    """Upload bytes to Supabase Storage bucket via REST API."""
+    import requests
+    url = f'https://{SUPABASE_REF}.supabase.co/storage/v1/object/{STORAGE_BUCKET}/{key}'
+    headers = {
+        'Authorization': f'Bearer {SUPABASE_SERVICE_KEY}',
+        'apikey': SUPABASE_SERVICE_KEY,
+        'Content-Type': 'image/jpeg',
+        'x-upsert': 'true',
+    }
+    r = requests.post(url, data=data, headers=headers, timeout=60)
+    r.raise_for_status()
 
 
-def _s3_put(key, data):
-    _s3_client().put_object(Bucket=S3_BUCKET, Key=key, Body=data, ContentType='image/jpeg')
-
-
-def _s3_get(key):
-    import io
-    resp = _s3_client().get_object(Bucket=S3_BUCKET, Key=key)
-    return resp['Body'].read()
+def _supabase_get(key):
+    """Fetch bytes from Supabase Storage bucket (public)."""
+    import requests
+    url = f'https://{SUPABASE_REF}.supabase.co/storage/v1/object/public/{STORAGE_BUCKET}/{key}'
+    r = requests.get(url, timeout=60)
+    if r.status_code != 200:
+        raise FileNotFoundError(key)
+    return r.content
 
 
 # Serve uploaded files
@@ -1238,9 +1238,9 @@ def _s3_get(key):
 def serve_upload(filename):
     from flask import make_response, send_file
     import io
-    if USE_S3:
+    if USE_SUPABASE_STORAGE:
         try:
-            data = _s3_get(filename)
+            data = _supabase_get(filename)
         except Exception:
             return jsonify({'error': '文件不存在'}), 404
         resp = make_response(send_file(io.BytesIO(data), mimetype='image/jpeg'))

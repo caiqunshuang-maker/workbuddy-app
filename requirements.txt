@@ -3,7 +3,6 @@ flask-cors==5.0.1
 flask-sqlalchemy==3.1.1
 requests==2.32.3
 psycopg2-binary==2.9.10
-boto3==1.35.0
 Pillow==12.3.0
 pillow-heif==1.5.0
 gunicorn==23.0.0

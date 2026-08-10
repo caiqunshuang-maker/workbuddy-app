@@ -9,13 +9,9 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: S3_ENDPOINT
+      - key: SUPABASE_REF
         sync: false
-      - key: S3_ACCESS_KEY
-        sync: false
-      - key: S3_SECRET_KEY
-        sync: false
-      - key: S3_BUCKET
+      - key: SUPABASE_SERVICE_KEY
         sync: false
 
   - type: cron
