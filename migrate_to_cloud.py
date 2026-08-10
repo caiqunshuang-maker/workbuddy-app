@@ -41,11 +41,8 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
 
-    # ---- ensure schema ----
-    from app import app
-    app.config['SQLALCHEMY_DATABASE_URI'] = uri
-    from models import db
-    db.init_app(app)
+    # app.py already initializes db with DATABASE_URL from env at import time
+    from app import app, db
 
     tables = ['tasks', 'notes', 'schedules', 'workouts', 'body_metrics',
               'fitness_goals', 'workout_exercises', 'diaries', 'transactions',
@@ -66,6 +63,19 @@ def main():
                     v = row[c]
                     if isinstance(v, (date, datetime)):
                         v = v.isoformat()
+                    elif isinstance(v, str) and ' ' in v:
+                        # SQLite timestamps like "2026-08-03 16:04:38.215651"
+                        try:
+                            from datetime import datetime as _dt
+                            v = _dt.strptime(v, '%Y-%m-%d %H:%M:%S.%f').isoformat()
+                        except Exception:
+                            try:
+                                from datetime import datetime as _dt2
+                                v = _dt2.strptime(v, '%Y-%m-%d %H:%M:%S').isoformat()
+                            except Exception:
+                                pass
+                    elif isinstance(v, int) and c in ('achieved', 'pinned', 'completed', 'yearly'):
+                        v = bool(v)
                     vals[c] = v
                 placeholders = ', '.join([':' + c for c in cols])
                 sql = f'INSERT INTO {table} ({", ".join(cols)}) VALUES ({placeholders})'

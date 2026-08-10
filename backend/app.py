@@ -75,16 +75,6 @@ def _migrate_db():
     conn.close()
 
 
-# Init DB
-db.init_app(app)
-with app.app_context():
-    db.create_all()
-    if _db_uri.startswith('sqlite'):
-        _migrate_db()
-    else:
-        _migrate_pg_categories()
-
-
 def _migrate_pg_categories():
     """Postgres-safe version of category migrations (no sqlite3 dependency)."""
     try:
@@ -99,6 +89,17 @@ def _migrate_pg_categories():
             conn.commit()
     except Exception:
         pass
+
+
+# Init DB
+db.init_app(app)
+with app.app_context():
+    db.create_all()
+    if _db_uri.startswith('sqlite'):
+        _migrate_db()
+    else:
+        _migrate_pg_categories()
+
 
 # ==================== Static Files ====================
 
